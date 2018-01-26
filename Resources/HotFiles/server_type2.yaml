@@ -1,0 +1,101 @@
+---
+heat_template_version: 2015-10-15
+
+parameters:
+  name:
+    type: string
+  flavor:
+    type: string
+    constraints:
+      - custom_constraint: nova.flavor
+  image:
+    type: string
+    description: ID or name of the image to use for the instances to be created.
+    constraints:
+      - custom_constraint: glance.image
+        description: Must identify an image known to Glance
+  key_name:
+    type: string
+    description: Keypair to enable SSH access to the instances.
+    constraints:
+      - custom_constraint: nova.keypair
+        description: Must name a public key (pair) known to Nova
+  network:
+    type: string
+    description: Name or ID of network to create VMs on.
+    constraints:
+      - custom_constraint: neutron.network
+        description: Must be a network known to Neutron
+  security_group:
+    type: string
+
+resources:
+  cinder_volume_SSD1:
+    type: OS::Cinder::Volume
+    properties:
+      size: 20
+      volume_type: SSD
+
+  cinder_volume_SSD2:
+    type: OS::Cinder::Volume
+    properties:
+      size: 20
+      volume_type: SSD      
+
+  cinder_volume_SATA1:
+    type: OS::Cinder::Volume
+    properties:
+      size: 40
+      volume_type: SATA
+
+  cinder_volume_SATA2:
+    type: OS::Cinder::Volume
+    properties:
+      size: 40
+      volume_type: SATA
+
+  cinder_volume_SATA3:
+    type: OS::Cinder::Volume
+    properties:
+      size: 40
+      volume_type: SATA
+
+  cinder_volume_SATA4:
+    type: OS::Cinder::Volume
+    properties:
+      size: 40
+      volume_type: SATA      
+
+  server:
+    type: OS::Nova::Server
+    depends_on:
+      - cinder_volume_SATA1
+      - cinder_volume_SATA2
+      - cinder_volume_SATA3
+      - cinder_volume_SATA4
+      - cinder_volume_SSD1
+      - cinder_volume_SSD2
+
+    properties:
+      name: { get_param: name }
+      flavor: { get_param: flavor }
+      image: { get_param: image }
+      key_name: { get_param: key_name }
+      block_device_mapping:
+        - device_name: vdb
+          volume_id: { get_resource: cinder_volume_SSD1 }
+        - device_name: vdc
+          volume_id: { get_resource: cinder_volume_SSD2 }
+        - device_name: vdd
+          volume_id: { get_resource: cinder_volume_SATA1 }
+        - device_name: vde
+          volume_id: { get_resource: cinder_volume_SATA2 }
+        - device_name: vdf
+          volume_id: { get_resource: cinder_volume_SATA3 }
+        - device_name: vde
+          volume_id: { get_resource: cinder_volume_SATA4 }
+
+      networks:
+        - network: { get_param: network }
+      security_groups:
+        - { get_param: security_group }

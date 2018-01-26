@@ -1,0 +1,7 @@
+Author: stuart.rosenfeld@scality.com
+Description: Bank - Sample Build
+Format: Heat.HOT/1.0
+FullName: io.murano.apps.generated.BofARingSetup
+Name: ring-bank-v03
+Tags:
+Type: Application

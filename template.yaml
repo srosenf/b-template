@@ -1,0 +1,126 @@
+---
+heat_template_version: 2015-10-15
+
+description: 'Ring Infrastruture - Basic infrastructure for manual ring installation'
+parameters:
+  image:
+    type: string
+    description: ID or name of the image to use for the instances to be created.
+    constraints:
+      - custom_constraint: glance.image
+        description: Must identify an image known to Glance
+  key_name:
+    type: string
+    description: Keypair to enable SSH access to the instances.
+    constraints:
+      - custom_constraint: nova.keypair
+        description: Must name a public key (pair) known to Nova
+  network:
+    type: string
+    description: Name or ID of network to create VMs on.
+    constraints:
+      - custom_constraint: neutron.network
+        description: Must be a network known to Neutron
+
+resources:
+  # cinder_volume_NFS:
+  #   type: OS::Cinder::Volume
+  #   properties:
+  #     size: 30
+  #     volume_type: NFS
+  cinder_volume_SATA:
+    type: OS::Cinder::Volume
+    properties:
+      size: 40
+      volume_type: SATA
+
+  scal-security-group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: Permit-All
+      rules:
+        - { direction: ingress, ethertype: IPv4, remote_mode: remote_group_id }
+        - { direction: ingress, ethertype: IPv6, remote_mode: remote_group_id }
+        - { port_range_max: 65534, port_range_min: 1, protocol: tcp }
+        - { port_range_max: 65534, port_range_min: 1, protocol: udp }
+
+  ## Group of servers - 2 ##
+  group_of_servers2:
+    type: OS::Heat::ResourceGroup
+    depends_on:
+      - scal-security-group
+    properties:
+      count: 6
+      resource_def:
+        type: server_type2.yaml
+        properties:
+          name:
+            list_join:
+              - '-'
+              - [ { get_param: 'OS::stack_name' }, store, '%index%' ]
+          flavor: m1.xlarge
+          image: { get_param: image }
+          key_name: { get_param: key_name }
+          network: { get_param: network }
+          security_group: { get_resource: scal-security-group }
+
+          ## Stack supervisor ##
+  supervisor_server_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: network }
+      security_groups:
+        - { get_resource: scal-security-group }
+
+  public_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: externalnetwork1
+
+  public_ip_assign:
+    type: OS::Neutron::FloatingIPAssociation
+    depends_on:
+      - public_ip
+      - supervisor_server_port
+    properties:
+      floatingip_id: { get_resource: public_ip }
+      port_id: { get_resource: supervisor_server_port }
+
+  supervisor_cinder_vol_SSD:
+    type: OS::Cinder::Volume
+    properties:
+      size: 20
+      volume_type: SSD
+
+  supervisor:
+    type: OS::Nova::Server
+    depends_on:
+      - supervisor_cinder_vol_SSD
+      - supervisor_server_port
+      - scal-security-group
+    properties:
+      flavor: m1.large
+      image: { get_param: image }
+      key_name: { get_param: key_name }
+      name:
+        list_join:
+          - '-'
+          - [ { get_param: 'OS::stack_name' }, sup ]
+      networks:
+        - port: { get_resource: supervisor_server_port }
+      block_device_mapping:
+        - device_name: vdb
+          volume_id: { get_resource: supervisor_cinder_vol_SSD }
+
+outputs:
+  public_ip:
+    description: Public IP of supervisor node
+    value: public_ip
+  supervisor_ip:
+    description: Private IP of supervisor node
+    value:
+      get_attr: [supervisor, networks, { get_param: network }, 0]
+  nodes_ip:
+    description: Private IP of storage nodes
+    value:
+      get_attr: [group_of_servers2, networks, { get_param: network }, 0]
